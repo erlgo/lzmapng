@@ -20,5 +20,6 @@
       'xcode_create_dependents_test_runner': 1,
       'dependencies': [
         '../third_party/libpng/libpng.gyp:*',
+        '../third_party/liblzma/liblzma.gyp:*',
       ],} ]
 }
