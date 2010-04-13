@@ -19,6 +19,7 @@
       'type': 'none',
       'xcode_create_dependents_test_runner': 1,
       'dependencies': [
+        '../lzmapng/lzmapng.gyp:*',
         '../third_party/libpng/libpng.gyp:*',
         '../third_party/liblzma/liblzma.gyp:*',
       ],} ]
