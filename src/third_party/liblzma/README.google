@@ -1,0 +1,8 @@
+URL: http://tukaani.org/xz/
+     http://tukaani.org/xz/xz-4.999.9beta.tar.gz
+Version: 4.999.9beta
+License: public domain
+License File: COPYING
+
+Description:
+liblzma is an lzma encoder included in the xz utils package.
