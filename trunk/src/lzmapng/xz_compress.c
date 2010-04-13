@@ -1,16 +1,25 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "lzma.h"
 
 static const size_t kBufSize = 4096;
 
-int Compress(FILE* in, FILE* out) {
+int Compress(FILE* in, FILE* out, int compress) {
   char inbuf[kBufSize];
   char outbuf[kBufSize];
   lzma_stream lstream = LZMA_STREAM_INIT;
-  lzma_ret rv = lzma_easy_encoder(&lstream,
-                                  LZMA_PRESET_DEFAULT,
-                                  LZMA_CHECK_CRC32);
+  lzma_ret rv;
+  if (compress) {
+    rv = lzma_easy_encoder(&lstream,
+                           LZMA_PRESET_DEFAULT,
+                           LZMA_CHECK_CRC32);
+  } else {
+    rv = lzma_stream_decoder(
+        &lstream,
+        lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
+        0);
+  }
   if (rv != LZMA_OK) {
     fprintf(stderr, "lzma_easy_encoder failed: %d\n", rv);
     return 0;
@@ -69,12 +78,31 @@ int Compress(FILE* in, FILE* out) {
 }
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    fprintf(stderr, "Usage: %s <infile> <outfile>\n", argv[0]);
+  if (argc != 4) {
+    fprintf(stderr, "Usage: %s <d|c> <infile> <outfile>\n", argv[0]);
     return 1;
   }
-  const char* infile = argv[1];
-  const char* outfile = argv[2];
+  const char* mode = argv[1];
+  const char* infile = argv[2];
+  const char* outfile = argv[3];
+
+  if (strlen(mode) != 1) {
+    fprintf(stderr, "Invalid mode %s\n", mode);
+    return 1;
+  }
+
+  int compress;
+  switch (mode[0]) {
+    case 'd':
+      compress = 0;
+      break;
+    case 'c':
+      compress = 1;
+      break;
+    default:
+      fprintf(stderr, "Invalid mode %s\n", mode);
+      return 1;
+  }
 
   FILE* in = fopen(infile, "rb");
   if (in == NULL) {
@@ -99,7 +127,10 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  int result = Compress(in, out);
+  fprintf(stderr, "%s %s...\n",
+          (compress ? "Compressing" : "Decompressing"),
+          infile);
+  int result = Compress(in, out, compress);
 
   fclose(in);
   fclose(out);
