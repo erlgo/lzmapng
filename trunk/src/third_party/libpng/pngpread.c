@@ -326,8 +326,14 @@ png_push_read_chunk(png_structp png_ptr, png_infop info_ptr)
       png_ptr->mode |= PNG_HAVE_IDAT;
       png_ptr->process_mode = PNG_READ_IDAT_MODE;
       png_push_have_info(png_ptr, info_ptr);
+#ifdef USE_ZLIB
       png_ptr->zstream.avail_out = (uInt)png_ptr->irowbytes;
       png_ptr->zstream.next_out = png_ptr->row_buf;
+#endif
+#ifdef USE_LZMA
+      png_ptr->lstream.avail_out = png_ptr->irowbytes;
+      png_ptr->lstream.next_out = png_ptr->row_buf;
+#endif
       return;
    }
 
@@ -823,6 +829,8 @@ png_process_IDAT_data(png_structp png_ptr, png_bytep buffer,
 {
    int ret;
 
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    if ((png_ptr->flags & PNG_FLAG_ZLIB_FINISHED) && buffer_length)
       png_error(png_ptr, "Extra compression data");
 
@@ -875,6 +883,64 @@ png_process_IDAT_data(png_structp png_ptr, png_bytep buffer,
       else
          break;
    }
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   if ((png_ptr->flags & PNG_FLAG_ZLIB_FINISHED) && buffer_length)
+      png_error(png_ptr, "Extra compression data");
+
+   png_ptr->lstream.next_in = buffer;
+   png_ptr->lstream.avail_in = buffer_length;
+   for (;;)
+   {
+      ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+      if (ret != LZMA_OK)
+      {
+         if (ret == LZMA_STREAM_END)
+         {
+            if (png_ptr->lstream.avail_in)
+               png_error(png_ptr, "Extra compressed data");
+
+            if (!(png_ptr->lstream.avail_out))
+            {
+               png_push_process_row(png_ptr);
+            }
+
+            png_ptr->mode |= PNG_AFTER_IDAT;
+            png_ptr->flags |= PNG_FLAG_ZLIB_FINISHED;
+            break;
+         }
+         else if (ret == LZMA_BUF_ERROR)
+            break;
+
+         else
+            png_error(png_ptr, "Decompression Error");
+      }
+      if (!(png_ptr->lstream.avail_out))
+      {
+         if ((
+#if defined(PNG_READ_INTERLACING_SUPPORTED)
+             png_ptr->interlaced && png_ptr->pass > 6) ||
+             (!png_ptr->interlaced &&
+#endif
+             png_ptr->row_number == png_ptr->num_rows))
+         {
+           if (png_ptr->lstream.avail_in)
+             png_warning(png_ptr, "Too much data in IDAT chunks");
+           png_ptr->flags |= PNG_FLAG_ZLIB_FINISHED;
+           break;
+         }
+         png_push_process_row(png_ptr);
+         png_ptr->lstream.avail_out = png_ptr->irowbytes;
+         png_ptr->lstream.next_out = png_ptr->row_buf;
+      }
+
+      else
+         break;
+   }
+   }
+#endif
 }
 
 void /* PRIVATE */
@@ -1340,6 +1406,8 @@ png_push_read_zTXt(png_structp png_ptr, png_infop info_ptr)
 
       text++;
 
+ #ifdef USE_ZLIB
+      if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
       png_ptr->zstream.next_in = (png_bytep )text;
       png_ptr->zstream.avail_in = (uInt)(png_ptr->current_text_size -
          (text - key));
@@ -1387,7 +1455,7 @@ png_push_read_zTXt(png_structp png_ptr, png_infop info_ptr)
 
                tmp = text;
                text = (png_charp)png_malloc(png_ptr, text_size +
-                  (png_uint_32)(png_ptr->zbuf_size 
+                  (png_uint_32)(png_ptr->zbuf_size
                   - png_ptr->zstream.avail_out + 1));
 
                png_memcpy(text, tmp, text_size);
@@ -1424,6 +1492,102 @@ png_push_read_zTXt(png_structp png_ptr, png_infop info_ptr)
          png_free(png_ptr, text);
          return;
       }
+      }
+#endif
+#ifdef USE_LZMA
+      if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+      png_ptr->lstream.next_in = (png_bytep )text;
+      png_ptr->lstream.avail_in = (uInt)(png_ptr->current_text_size -
+         (text - key));
+      png_ptr->lstream.next_out = png_ptr->zbuf;
+      png_ptr->lstream.avail_out = (uInt)png_ptr->zbuf_size;
+
+      key_size = text - key;
+      text_size = 0;
+      text = NULL;
+      ret = LZMA_STREAM_END;
+
+      while (png_ptr->lstream.avail_in)
+      {
+         ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+         if (ret != LZMA_OK && ret != LZMA_STREAM_END)
+         {
+           lzma_stream_decoder(
+               &png_ptr->lstream,
+               lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
+               0);
+            png_ptr->lstream.avail_in = 0;
+            png_ptr->current_text = NULL;
+            png_free(png_ptr, key);
+            png_free(png_ptr, text);
+            return;
+         }
+         if (!(png_ptr->lstream.avail_out) || ret == LZMA_STREAM_END)
+         {
+            if (text == NULL)
+            {
+               text = (png_charp)png_malloc(png_ptr,
+                     (png_uint_32)(png_ptr->zbuf_size
+                     - png_ptr->lstream.avail_out + key_size + 1));
+
+               png_memcpy(text + key_size, png_ptr->zbuf,
+                  png_ptr->zbuf_size - png_ptr->lstream.avail_out);
+
+               png_memcpy(text, key, key_size);
+
+               text_size = key_size + png_ptr->zbuf_size -
+                  png_ptr->lstream.avail_out;
+
+               *(text + text_size) = '\0';
+            }
+            else
+            {
+               png_charp tmp;
+
+               tmp = text;
+               text = (png_charp)png_malloc(png_ptr, text_size +
+                  (png_uint_32)(png_ptr->zbuf_size
+                  - png_ptr->lstream.avail_out + 1));
+
+               png_memcpy(text, tmp, text_size);
+               png_free(png_ptr, tmp);
+
+               png_memcpy(text + text_size, png_ptr->zbuf,
+                  png_ptr->zbuf_size - png_ptr->lstream.avail_out);
+
+               text_size += png_ptr->zbuf_size - png_ptr->lstream.avail_out;
+               *(text + text_size) = '\0';
+            }
+            if (ret != LZMA_STREAM_END)
+            {
+               png_ptr->lstream.next_out = png_ptr->zbuf;
+               png_ptr->lstream.avail_out = (uInt)png_ptr->zbuf_size;
+            }
+         }
+         else
+         {
+            break;
+         }
+
+         if (ret == LZMA_STREAM_END)
+            break;
+      }
+
+      lzma_stream_decoder(
+          &png_ptr->lstream,
+          lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
+          0);
+      png_ptr->lstream.avail_in = 0;
+
+      if (ret != LZMA_STREAM_END)
+      {
+         png_ptr->current_text = NULL;
+         png_free(png_ptr, key);
+         png_free(png_ptr, text);
+         return;
+      }
+      }
+#endif
 
       png_ptr->current_text = NULL;
       png_free(png_ptr, key);
@@ -1609,7 +1773,7 @@ png_push_handle_unknown(png_structp png_ptr, png_infop info_ptr, png_uint_32
       }
 #endif
       png_memcpy((png_charp)png_ptr->unknown_chunk.name,
-                 (png_charp)png_ptr->chunk_name, 
+                 (png_charp)png_ptr->chunk_name,
                  png_sizeof(png_ptr->unknown_chunk.name));
       png_ptr->unknown_chunk.name[png_sizeof(png_ptr->unknown_chunk.name) - 1]
         = '\0';

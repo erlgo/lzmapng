@@ -68,6 +68,8 @@ png_write_info_before_PLTE(png_structp png_ptr, png_infop info_ptr)
 #endif
 #if defined(PNG_WRITE_iCCP_SUPPORTED)
    if (info_ptr->valid & PNG_INFO_iCCP)
+       // NOTE: the compression_type param passed to png_write_iCCP is
+       // handled as a PNG_TEXT_COMPRESSION_* value! Careful!
       png_write_iCCP(png_ptr, info_ptr->iccp_name, PNG_COMPRESSION_TYPE_BASE,
                      info_ptr->iccp_profile, (int)info_ptr->iccp_proflen);
 #endif
@@ -968,6 +970,8 @@ png_write_flush(png_structp png_ptr)
    if (png_ptr->row_number >= png_ptr->num_rows)
       return;
 
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    do
    {
       int ret;
@@ -1005,6 +1009,47 @@ png_write_flush(png_structp png_ptr)
       png_ptr->zstream.next_out = png_ptr->zbuf;
       png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
    }
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   do
+   {
+      lzma_ret ret;
+
+      /* Compress the data */
+      ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+      wrote_IDAT = 0;
+
+      /* Check for compression errors */
+      if (ret != LZMA_OK)
+      {
+        png_error(png_ptr, "lzma error");
+      }
+
+      if (!(png_ptr->lstream.avail_out))
+      {
+         /* Write the IDAT and reset the zlib output buffer */
+         png_write_IDAT(png_ptr, png_ptr->zbuf,
+                        png_ptr->zbuf_size);
+         png_ptr->lstream.next_out = png_ptr->zbuf;
+         png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+         wrote_IDAT = 1;
+      }
+   } while(wrote_IDAT == 1);
+
+   /* If there is any data left to be output, write it into a new IDAT */
+   if (png_ptr->zbuf_size != png_ptr->lstream.avail_out)
+   {
+      /* Write the IDAT and reset the zlib output buffer */
+      png_write_IDAT(png_ptr, png_ptr->zbuf,
+                     png_ptr->zbuf_size - png_ptr->lstream.avail_out);
+      png_ptr->lstream.next_out = png_ptr->zbuf;
+      png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+   }
+   }
+#endif
+
    png_ptr->flush_rows = 0;
    png_flush(png_ptr);
 }
@@ -1097,7 +1142,12 @@ png_write_destroy(png_structp png_ptr)
 
    png_debug(1, "in png_write_destroy");
    /* Free any memory zlib uses */
+#ifdef USE_ZLIB
    deflateEnd(&png_ptr->zstream);
+#endif
+#ifdef USE_LZMA
+   lzma_end(&png_ptr->lstream);
+#endif
 
    /* Free our memory.  png_free checks NULL for us. */
    png_free(png_ptr, png_ptr->zbuf);
@@ -1474,7 +1524,7 @@ png_set_write_user_transform_fn(png_structp png_ptr, png_user_transform_ptr
 #if defined(PNG_INFO_IMAGE_SUPPORTED)
 void PNGAPI
 png_write_png(png_structp png_ptr, png_infop info_ptr,
-              int transforms, voidp params)
+              int transforms, png_voidp params)
 {
    if (png_ptr == NULL || info_ptr == NULL)
       return;

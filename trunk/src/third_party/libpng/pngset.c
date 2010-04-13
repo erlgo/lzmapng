@@ -259,8 +259,10 @@ png_set_IHDR(png_structp png_ptr, png_infop info_ptr,
    if (interlace_type >= PNG_INTERLACE_LAST)
       png_error(png_ptr, "Unknown interlace method in IHDR");
 
+#if 0
    if (compression_type != PNG_COMPRESSION_TYPE_BASE)
       png_error(png_ptr, "Unknown compression method in IHDR");
+#endif
 
 #if defined(PNG_MNG_FEATURES_SUPPORTED)
    /* Accept filter_method 64 (intrapixel differencing) only if
@@ -295,6 +297,7 @@ png_set_IHDR(png_structp png_ptr, png_infop info_ptr,
    info_ptr->bit_depth = (png_byte)bit_depth;
    info_ptr->color_type =(png_byte) color_type;
    info_ptr->compression_type = (png_byte)compression_type;
+   png_ptr->compression_type = (png_byte)compression_type;
    info_ptr->filter_type = (png_byte)filter_type;
    info_ptr->interlace_type = (png_byte)interlace_type;
    if (info_ptr->color_type == PNG_COLOR_TYPE_PALETTE)
@@ -1035,8 +1038,8 @@ png_set_unknown_chunks(png_structp png_ptr,
       png_unknown_chunkp to = np + info_ptr->unknown_chunks_num + i;
       png_unknown_chunkp from = unknowns + i;
 
-      png_memcpy((png_charp)to->name, 
-                 (png_charp)from->name, 
+      png_memcpy((png_charp)to->name,
+                 (png_charp)from->name,
                  png_sizeof(from->name));
       to->name[png_sizeof(to->name)-1] = '\0';
       to->size = from->size;
@@ -1194,8 +1197,14 @@ png_set_compression_buffer_size(png_structp png_ptr,
     png_free(png_ptr, png_ptr->zbuf);
     png_ptr->zbuf_size = (png_size_t)size;
     png_ptr->zbuf = (png_bytep)png_malloc(png_ptr, size);
+#ifdef USE_ZLIB
     png_ptr->zstream.next_out = png_ptr->zbuf;
     png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
+#endif
+#ifdef USE_LZMA
+    png_ptr->lstream.next_out = png_ptr->zbuf;
+    png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+#endif
 }
 #endif
 
