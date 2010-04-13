@@ -7,9 +7,6 @@
         'delta/delta_common.c',
         'delta/delta_encoder.c',
         'delta/delta_decoder.c',
-        'subblock/subblock_decoder_helper.c',
-        'subblock/subblock_encoder.c',
-        'subblock/subblock_decoder.c',
         'common/filter_flags_decoder.c',
         'common/filter_buffer_encoder.c',
         'common/index.c',
@@ -59,17 +56,12 @@
         'simple/sparc.c',
         'simple/ia64.c',
         'simple/powerpc.c',
-        'check/crc32_small.c',
         'check/crc64_table.c',
+        'check/crc64_x86.S',
         'check/check.c',
-        'check/crc64_fast.c',
-        'check/crc32_fast.c',
         'check/crc32_table.c',
-        'check/crc64_tablegen.c',
+        'check/crc32_x86.S',
         'check/sha256.c',
-        'check/crc32_tablegen.c',
-        'check/crc64_small.c',
-        'rangecoder/price_tablegen.c',
         'rangecoder/price_table.c',
         'lzma/lzma_encoder_optimum_normal.c',
         'lzma/lzma2_decoder.c',
@@ -79,11 +71,37 @@
         'lzma/lzma_encoder_presets.c',
         'lzma/lzma_encoder_optimum_fast.c',
         'lzma/lzma2_encoder.c',
-        'lzma/fastpos_tablegen.c',
       ],
       'include_dirs': [
+        # Listed in the same order that they appear during the xzutils
+        # build process.
         'api',
+        'common',
+        'check',
+        'lz',
+        'rangecoder',
+        'lzma',
+        'subblock',
+        'delta',
+        'simple',
+        'xz/src/common',
+        'arch/<(OS)/<(target_arch)/include',
       ],
+      'defines': [
+        'HAVE_CONFIG_H',
+      ],
+      'conditions': [
+        ['OS == "linux"', {
+          'cflags': [
+            '-std=gnu99',
+          ],
+        }],
+      ],
+      'direct_dependent_settings': {
+        'include_dirs': [
+          'api',
+        ],
+      },
     },
   ],
 }

@@ -30,7 +30,7 @@
 #include "check.h"
 
 #ifndef WORDS_BIGENDIAN
-#	include "../../common/bswap.h"
+#	include "bswap.h"
 #endif
 
 // At least on x86, GCC is able to optimize this to a rotate instruction.
