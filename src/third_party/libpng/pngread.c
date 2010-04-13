@@ -102,7 +102,7 @@ png_create_read_struct_2(png_const_charp user_png_ver, png_voidp error_ptr,
    }
    else
         png_ptr->flags |= PNG_FLAG_LIBRARY_MISMATCH;
-   
+
 
    if (png_ptr->flags & PNG_FLAG_LIBRARY_MISMATCH)
    {
@@ -141,6 +141,7 @@ png_create_read_struct_2(png_const_charp user_png_ver, png_voidp error_ptr,
    png_ptr->zbuf_size = PNG_ZBUF_SIZE;
    png_ptr->zbuf = (png_bytep)png_malloc(png_ptr,
      (png_uint_32)png_ptr->zbuf_size);
+#ifdef USE_ZLIB
    png_ptr->zstream.zalloc = png_zalloc;
    png_ptr->zstream.zfree = png_zfree;
    png_ptr->zstream.opaque = (voidpf)png_ptr;
@@ -156,6 +157,20 @@ png_create_read_struct_2(png_const_charp user_png_ver, png_voidp error_ptr,
 
    png_ptr->zstream.next_out = png_ptr->zbuf;
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
+#endif
+#ifdef USE_LZMA
+   switch (lzma_stream_decoder(
+       &png_ptr->lstream,
+       lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
+       0))
+   {
+     case LZMA_OK: /* Do nothing */ break;
+     default: png_error(png_ptr, "lzma error");
+   }
+
+   png_ptr->lstream.next_out = png_ptr->zbuf;
+   png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+#endif
 
    png_set_read_fn(png_ptr, png_voidp_NULL, png_rw_ptr_NULL);
 
@@ -297,6 +312,7 @@ png_read_init_3(png_structpp ptr_ptr, png_const_charp user_png_ver,
    png_ptr->zbuf_size = PNG_ZBUF_SIZE;
    png_ptr->zbuf = (png_bytep)png_malloc(png_ptr,
      (png_uint_32)png_ptr->zbuf_size);
+#ifdef USE_ZLIB
    png_ptr->zstream.zalloc = png_zalloc;
    png_ptr->zstream.zfree = png_zfree;
    png_ptr->zstream.opaque = (voidpf)png_ptr;
@@ -312,6 +328,20 @@ png_read_init_3(png_structpp ptr_ptr, png_const_charp user_png_ver,
 
    png_ptr->zstream.next_out = png_ptr->zbuf;
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
+#endif
+#ifdef USE_LZMA
+   switch (lzma_stream_decoder(
+       &png_ptr->lstream,
+       lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
+       0))
+   {
+     case LZMA_OK: /* Do nothing */ break;
+     default: png_error(png_ptr, "lzma error");
+   }
+
+   png_ptr->lstream.next_out = png_ptr->zbuf;
+   png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+#endif
 
    png_set_read_fn(png_ptr, png_voidp_NULL, png_rw_ptr_NULL);
 }
@@ -694,6 +724,8 @@ png_read_row(png_structp png_ptr, png_bytep row, png_bytep dsp_row)
    if (!(png_ptr->mode & PNG_HAVE_IDAT))
       png_error(png_ptr, "Invalid attempt to read row data");
 
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    png_ptr->zstream.next_out = png_ptr->row_buf;
    png_ptr->zstream.avail_out = (uInt)png_ptr->irowbytes;
    do
@@ -731,6 +763,48 @@ png_read_row(png_structp png_ptr, png_bytep row, png_bytep dsp_row)
                    "Decompression error");
 
    } while (png_ptr->zstream.avail_out);
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   png_ptr->lstream.next_out = png_ptr->row_buf;
+   png_ptr->lstream.avail_out = png_ptr->irowbytes;
+   do
+   {
+      if (!(png_ptr->lstream.avail_in))
+      {
+         while (!png_ptr->idat_size)
+         {
+            png_crc_finish(png_ptr, 0);
+
+            png_ptr->idat_size = png_read_chunk_header(png_ptr);
+            if (png_memcmp(png_ptr->chunk_name, png_IDAT, 4))
+               png_error(png_ptr, "Not enough image data");
+         }
+         png_ptr->lstream.avail_in = png_ptr->zbuf_size;
+         png_ptr->lstream.next_in = png_ptr->zbuf;
+         if (png_ptr->zbuf_size > png_ptr->idat_size)
+            png_ptr->lstream.avail_in = png_ptr->idat_size;
+         png_crc_read(png_ptr, png_ptr->zbuf,
+            (png_size_t)png_ptr->lstream.avail_in);
+         png_ptr->idat_size -= png_ptr->lstream.avail_in;
+      }
+      ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+      if (ret == LZMA_STREAM_END)
+      {
+         if (png_ptr->lstream.avail_out || png_ptr->lstream.avail_in ||
+            png_ptr->idat_size)
+            png_error(png_ptr, "Extra compressed data");
+         png_ptr->mode |= PNG_AFTER_IDAT;
+         png_ptr->flags |= PNG_FLAG_ZLIB_FINISHED;
+         break;
+      }
+      if (ret != LZMA_OK)
+         png_error(png_ptr, "Decompression error");
+
+   } while (png_ptr->lstream.avail_out);
+   }
+#endif
 
    png_ptr->row_info.color_type = png_ptr->color_type;
    png_ptr->row_info.width = png_ptr->iwidth;
@@ -1262,7 +1336,12 @@ png_read_destroy(png_structp png_ptr, png_infop info_ptr, png_infop end_info_ptr
    png_free(png_ptr, png_ptr->time_buffer);
 #endif
 
+#ifdef USE_ZLIB
    inflateEnd(&png_ptr->zstream);
+#endif
+#ifdef USE_LZMA
+   lzma_end(&png_ptr->lstream);
+#endif
 #ifdef PNG_PROGRESSIVE_READ_SUPPORTED
    png_free(png_ptr, png_ptr->save_buffer);
 #endif
@@ -1316,7 +1395,7 @@ png_set_read_status_fn(png_structp png_ptr, png_read_status_ptr read_row_fn)
 void PNGAPI
 png_read_png(png_structp png_ptr, png_infop info_ptr,
                            int transforms,
-                           voidp params)
+                           png_voidp params)
 {
    int row;
 

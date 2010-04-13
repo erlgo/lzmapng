@@ -21,10 +21,13 @@
           'type': '<(library)',
           'dependencies': [
             '../zlib/zlib.gyp:zlib',
+            '../liblzma/liblzma.gyp:liblzma',
           ],
           'defines': [
             'CHROME_PNG_WRITE_SUPPORT',
             'PNG_USER_CONFIG',
+            'USE_ZLIB',
+            'USE_LZMA',
           ],
           'msvs_guid': 'C564F145-9172-42C3-BFCB-6014CA97DBCD',
           'sources': [
@@ -56,10 +59,13 @@
             'defines': [
               'CHROME_PNG_WRITE_SUPPORT',
               'PNG_USER_CONFIG',
+              'USE_ZLIB',
+              'USE_LZMA',
             ],
           },
           'export_dependent_settings': [
             '../zlib/zlib.gyp:zlib',
+            '../liblzma/liblzma.gyp:liblzma',
           ],
           'conditions': [
             ['OS!="win"', {'product_name': 'png'}],

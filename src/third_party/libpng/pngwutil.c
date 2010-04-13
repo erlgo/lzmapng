@@ -212,6 +212,8 @@ png_text_compress(png_structp png_ptr,
     * wouldn't cause a failure, just a slowdown due to swapping).
     */
 
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    /* Set up the compression buffers */
    png_ptr->zstream.avail_in = (uInt)text_len;
    png_ptr->zstream.next_in = (Bytef *)text;
@@ -338,6 +340,138 @@ png_text_compress(png_structp png_ptr,
    text_len = png_ptr->zbuf_size * comp->num_output_ptr;
    if (png_ptr->zstream.avail_out < png_ptr->zbuf_size)
       text_len += png_ptr->zbuf_size - (png_size_t)png_ptr->zstream.avail_out;
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   /* Set up the compression buffers */
+   png_ptr->lstream.avail_in = (uInt)text_len;
+   png_ptr->lstream.next_in = (Bytef *)text;
+   png_ptr->lstream.avail_out = (uInt)png_ptr->zbuf_size;
+   png_ptr->lstream.next_out = (Bytef *)png_ptr->zbuf;
+
+   /* This is the same compression loop as in png_write_row() */
+   do
+   {
+      /* Compress the data */
+      ret = lzma_code(&png_ptr->lstream, LZMA_NO_FLUSH);
+      if (ret != LZMA_OK)
+      {
+         /* Error */
+         if (png_ptr->lstream.msg != NULL)
+            png_error(png_ptr, png_ptr->lstream.msg);
+         else
+            png_error(png_ptr, "zlib error");
+      }
+      /* Check to see if we need more room */
+      if (!(png_ptr->lstream.avail_out))
+      {
+         /* Make sure the output array has room */
+         if (comp->num_output_ptr >= comp->max_output_ptr)
+         {
+            int old_max;
+
+            old_max = comp->max_output_ptr;
+            comp->max_output_ptr = comp->num_output_ptr + 4;
+            if (comp->output_ptr != NULL)
+            {
+               png_charpp old_ptr;
+
+               old_ptr = comp->output_ptr;
+               comp->output_ptr = (png_charpp)png_malloc(png_ptr,
+                  (png_uint_32)
+                  (comp->max_output_ptr * png_sizeof(png_charpp)));
+               png_memcpy(comp->output_ptr, old_ptr, old_max
+                  * png_sizeof(png_charp));
+               png_free(png_ptr, old_ptr);
+            }
+            else
+               comp->output_ptr = (png_charpp)png_malloc(png_ptr,
+                  (png_uint_32)
+                  (comp->max_output_ptr * png_sizeof(png_charp)));
+         }
+
+         /* Save the data */
+         comp->output_ptr[comp->num_output_ptr] =
+            (png_charp)png_malloc(png_ptr,
+            (png_uint_32)png_ptr->zbuf_size);
+         png_memcpy(comp->output_ptr[comp->num_output_ptr], png_ptr->zbuf,
+            png_ptr->zbuf_size);
+         comp->num_output_ptr++;
+
+         /* and reset the buffer */
+         png_ptr->lstream.avail_out = (uInt)png_ptr->zbuf_size;
+         png_ptr->lstream.next_out = png_ptr->zbuf;
+      }
+   /* Continue until we don't have any more to compress */
+   } while (png_ptr->lstream.avail_in);
+
+   /* Finish the compression */
+   do
+   {
+      /* Tell zlib we are finished */
+      ret = lzma_code(&png_ptr->lstream, LZMA_FINISH);
+
+      if (ret == LZMA_OK)
+      {
+         /* Check to see if we need more room */
+         if (!(png_ptr->lstream.avail_out))
+         {
+            /* Check to make sure our output array has room */
+            if (comp->num_output_ptr >= comp->max_output_ptr)
+            {
+               int old_max;
+
+               old_max = comp->max_output_ptr;
+               comp->max_output_ptr = comp->num_output_ptr + 4;
+               if (comp->output_ptr != NULL)
+               {
+                  png_charpp old_ptr;
+
+                  old_ptr = comp->output_ptr;
+                  /* This could be optimized to realloc() */
+                  comp->output_ptr = (png_charpp)png_malloc(png_ptr,
+                     (png_uint_32)(comp->max_output_ptr *
+                     png_sizeof(png_charp)));
+                  png_memcpy(comp->output_ptr, old_ptr,
+                     old_max * png_sizeof(png_charp));
+                  png_free(png_ptr, old_ptr);
+               }
+               else
+                  comp->output_ptr = (png_charpp)png_malloc(png_ptr,
+                     (png_uint_32)(comp->max_output_ptr *
+                     png_sizeof(png_charp)));
+            }
+
+            /* Save the data */
+            comp->output_ptr[comp->num_output_ptr] =
+               (png_charp)png_malloc(png_ptr,
+               (png_uint_32)png_ptr->zbuf_size);
+            png_memcpy(comp->output_ptr[comp->num_output_ptr], png_ptr->zbuf,
+               png_ptr->zbuf_size);
+            comp->num_output_ptr++;
+
+            /* and reset the buffer pointers */
+            png_ptr->lstream.avail_out = (uInt)png_ptr->zbuf_size;
+            png_ptr->lstream.next_out = png_ptr->zbuf;
+         }
+      }
+      else if (ret != LZMA_STREAM_END)
+      {
+         /* We got an error */
+         if (png_ptr->lstream.msg != NULL)
+            png_error(png_ptr, png_ptr->lstream.msg);
+         else
+            png_error(png_ptr, "zlib error");
+      }
+   } while (ret != LZMA_STREAM_END);
+
+   /* Text length is number of buffers plus last buffer */
+   text_len = png_ptr->zbuf_size * comp->num_output_ptr;
+   if (png_ptr->lstream.avail_out < png_ptr->zbuf_size)
+      text_len += png_ptr->zbuf_size - (png_size_t)png_ptr->lstream.avail_out;
+   }
+#endif
 
    return((int)text_len);
 }
@@ -367,6 +501,8 @@ png_write_compressed_data_out(png_structp png_ptr, compression_state *comp)
    if (comp->max_output_ptr != 0)
       png_free(png_ptr, comp->output_ptr);
        comp->output_ptr=NULL;
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    /* Write anything left in zbuf */
    if (png_ptr->zstream.avail_out < (png_uint_32)png_ptr->zbuf_size)
       png_write_chunk_data(png_ptr, png_ptr->zbuf,
@@ -375,6 +511,21 @@ png_write_compressed_data_out(png_structp png_ptr, compression_state *comp)
    /* Reset zlib for another zTXt/iTXt or image data */
    deflateReset(&png_ptr->zstream);
    png_ptr->zstream.data_type = Z_BINARY;
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   /* Write anything left in zbuf */
+   if (png_ptr->lstream.avail_out < (png_uint_32)png_ptr->zbuf_size)
+      png_write_chunk_data(png_ptr, png_ptr->zbuf,
+         (png_size_t)(png_ptr->zbuf_size - png_ptr->lstream.avail_out));
+
+   /* Reset zlib for another zTXt/iTXt or image data */
+   lzma_ret ignore = lzma_easy_encoder(&png_ptr->lstream,
+                                       LZMA_PRESET_DEFAULT,
+                                       LZMA_CHECK_CRC32);
+   }
+#endif
 }
 #endif
 
@@ -438,11 +589,13 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
          png_error(png_ptr, "Invalid image color type specified");
    }
 
+#if 0
    if (compression_type != PNG_COMPRESSION_TYPE_BASE)
    {
       png_warning(png_ptr, "Invalid compression type specified");
       compression_type = PNG_COMPRESSION_TYPE_BASE;
    }
+#endif
 
    /* Write filter_method 64 (intrapixel differencing) only if
     * 1. Libpng was compiled with PNG_MNG_FEATURES_SUPPORTED and
@@ -509,9 +662,11 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
    png_write_chunk(png_ptr, (png_bytep)png_IHDR, buf, (png_size_t)13);
 
    /* Initialize zlib with PNG info */
+#ifdef USE_ZLIB
    png_ptr->zstream.zalloc = png_zalloc;
    png_ptr->zstream.zfree = png_zfree;
    png_ptr->zstream.opaque = (voidpf)png_ptr;
+#endif
    if (!(png_ptr->do_filter))
    {
       if (png_ptr->color_type == PNG_COLOR_TYPE_PALETTE ||
@@ -520,6 +675,7 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
       else
          png_ptr->do_filter = PNG_ALL_FILTERS;
    }
+#ifdef USE_ZLIB
    if (!(png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_STRATEGY))
    {
       if (png_ptr->do_filter != PNG_FILTER_NONE)
@@ -553,6 +709,18 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
    /* libpng is not interested in zstream.data_type */
    /* Set it to a predefined value, to avoid its evaluation inside zlib */
    png_ptr->zstream.data_type = Z_BINARY;
+#endif
+
+#ifdef USE_LZMA
+   png_memset(&png_ptr->lstream, 0, sizeof(lzma_stream));
+   if (lzma_easy_encoder(&png_ptr->lstream,
+                         LZMA_PRESET_DEFAULT,
+                         LZMA_CHECK_CRC32) != LZMA_OK) {
+     png_error(png_ptr, "lzma failed to initialize compressor");
+   }
+   png_ptr->lstream.next_out = png_ptr->zbuf;
+   png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+#endif
 
    png_ptr->mode = PNG_HAVE_IHDR;
 }
@@ -772,8 +940,10 @@ png_write_iCCP(png_structp png_ptr, png_charp name, int compression_type,
       &new_name)) == 0)
       return;
 
+#if 0
    if (compression_type != PNG_COMPRESSION_TYPE_BASE)
       png_warning(png_ptr, "Unknown compression type in iCCP chunk");
+#endif
 
    if (profile == NULL)
       profile_len = 0;
@@ -802,7 +972,7 @@ png_write_iCCP(png_structp png_ptr, png_charp name, int compression_type,
 
    if (profile_len)
       profile_len = png_text_compress(png_ptr, profile,
-        (png_size_t)profile_len, PNG_COMPRESSION_TYPE_BASE, &comp);
+        (png_size_t)profile_len, compression_type, &comp);
 
    /* Make sure we include the NULL after the name and the compression type */
    png_write_chunk_start(png_ptr, (png_bytep)png_iCCP,
@@ -988,7 +1158,7 @@ png_write_cHRM(png_structp png_ptr, double white_x, double white_y,
 #endif
    {
       /* Each value is saved in 1/100,000ths */
-    
+
       png_save_uint_32(buf, int_white_x);
       png_save_uint_32(buf + 4, int_white_y);
 
@@ -1812,8 +1982,14 @@ png_write_start_row(png_structp png_ptr)
       png_ptr->num_rows = png_ptr->height;
       png_ptr->usr_width = png_ptr->width;
    }
+#ifdef USE_ZLIB
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
    png_ptr->zstream.next_out = png_ptr->zbuf;
+#endif
+#ifdef USE_LZMA
+   png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+   png_ptr->lstream.next_out = png_ptr->zbuf;
+#endif
 }
 
 /* Internal use only.  Called when finished processing a row of data. */
@@ -1893,6 +2069,8 @@ png_write_finish_row(png_structp png_ptr)
 
    /* If we get here, we've just written the last row, so we need
       to flush the compressor */
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    do
    {
       /* Tell the compressor we are done */
@@ -1926,6 +2104,45 @@ png_write_finish_row(png_structp png_ptr)
 
    deflateReset(&png_ptr->zstream);
    png_ptr->zstream.data_type = Z_BINARY;
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   do
+   {
+      /* Tell the compressor we are done */
+      ret = lzma_code(&png_ptr->lstream, LZMA_FINISH);
+      /* Check for an error */
+      if (ret == LZMA_OK)
+      {
+         /* Check to see if we need more room */
+         if (!(png_ptr->lstream.avail_out))
+         {
+            png_write_IDAT(png_ptr, png_ptr->zbuf, png_ptr->zbuf_size);
+            png_ptr->lstream.next_out = png_ptr->zbuf;
+            png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+         }
+      }
+      else if (ret != LZMA_STREAM_END)
+      {
+        png_error(png_ptr, "lzma error");
+      }
+   } while (ret != LZMA_STREAM_END);
+
+   /* Write any extra space */
+   if (png_ptr->lstream.avail_out < png_ptr->zbuf_size)
+   {
+      png_write_IDAT(png_ptr, png_ptr->zbuf, png_ptr->zbuf_size -
+         png_ptr->lstream.avail_out);
+   }
+
+   if (lzma_easy_encoder(&png_ptr->lstream,
+                         LZMA_PRESET_DEFAULT,
+                         LZMA_CHECK_CRC32) != LZMA_OK) {
+     png_error(png_ptr, "lzma failed to initialize compressor");
+   }
+   }
+#endif
 }
 
 #if defined(PNG_WRITE_INTERLACING_SUPPORTED)
@@ -2733,6 +2950,8 @@ png_write_filtered_row(png_structp png_ptr, png_bytep filtered_row)
    png_debug1(2, "filter = %d", filtered_row[0]);
    /* Set up the zlib input buffer */
 
+#ifdef USE_ZLIB
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_BASE) {
    png_ptr->zstream.next_in = filtered_row;
    png_ptr->zstream.avail_in = (uInt)png_ptr->row_info.rowbytes + 1;
    /* Repeat until we have compressed all the data */
@@ -2761,6 +2980,37 @@ png_write_filtered_row(png_structp png_ptr, png_bytep filtered_row)
       }
    /* Repeat until all data has been compressed */
    } while (png_ptr->zstream.avail_in);
+   }
+#endif
+#ifdef USE_LZMA
+   if (png_ptr->compression_type == PNG_COMPRESSION_TYPE_LZMA) {
+   png_ptr->lstream.next_in = filtered_row;
+   png_ptr->lstream.avail_in = png_ptr->row_info.rowbytes + 1;
+   /* Repeat until we have compressed all the data */
+   do
+   {
+      lzma_ret ret; /* Return of lzma */
+
+      /* Compress the data */
+      ret = lzma_code(&png_ptr->lstream, LZMA_RUN);
+      /* Check for compression errors */
+      if (ret != LZMA_OK)
+      {
+        png_error(png_ptr, "lzma error");
+      }
+
+      /* See if it is time to write another IDAT */
+      if (!(png_ptr->lstream.avail_out))
+      {
+         /* Write the IDAT and reset the zlib output buffer */
+         png_write_IDAT(png_ptr, png_ptr->zbuf, png_ptr->zbuf_size);
+         png_ptr->lstream.next_out = png_ptr->zbuf;
+         png_ptr->lstream.avail_out = png_ptr->zbuf_size;
+      }
+   /* Repeat until all data has been compressed */
+   } while (png_ptr->lstream.avail_in);
+   }
+#endif
 
    /* Swap the current and previous rows */
    if (png_ptr->prev_row != NULL)

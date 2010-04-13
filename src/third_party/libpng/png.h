@@ -454,7 +454,7 @@
 #define PNG_LIBPNG_BUILD_RC       3
 #define PNG_LIBPNG_BUILD_STABLE   4
 #define PNG_LIBPNG_BUILD_RELEASE_STATUS_MASK 7
-  
+
 /* Release-Specific Flags */
 #define PNG_LIBPNG_BUILD_PATCH    8 /* Can be OR'ed with
                                        PNG_LIBPNG_BUILD_STABLE only */
@@ -474,7 +474,13 @@
 
 #ifndef PNG_VERSION_INFO_ONLY
 /* include the compression library's header */
+#ifdef USE_ZLIB
 #include "zlib.h"
+#endif
+#endif
+
+#ifdef USE_LZMA
+#include "lzma.h"
 #endif
 
 /* include all user configurable info, including optional assembler routines */
@@ -485,12 +491,12 @@
 /* Ref MSDN: Private as priority over Special
  * VS_FF_PRIVATEBUILD File *was not* built using standard release
  * procedures. If this value is given, the StringFileInfo block must
- * contain a PrivateBuild string. 
+ * contain a PrivateBuild string.
  *
  * VS_FF_SPECIALBUILD File *was* built by the original company using
  * standard release procedures but is a variation of the standard
  * file of the same version number. If this value is given, the
- * StringFileInfo block must contain a SpecialBuild string. 
+ * StringFileInfo block must contain a SpecialBuild string.
  */
 
 #if defined(PNG_USER_PRIVATEBUILD)
@@ -1033,6 +1039,7 @@ typedef png_info FAR * FAR * png_infopp;
 
 /* This is for compression type. PNG 1.0-1.2 only define the single type. */
 #define PNG_COMPRESSION_TYPE_BASE 0 /* Deflate method 8, 32K window */
+#define PNG_COMPRESSION_TYPE_LZMA 1
 #define PNG_COMPRESSION_TYPE_DEFAULT PNG_COMPRESSION_TYPE_BASE
 
 /* This is for filter type. PNG 1.0-1.2 only define the single type. */
@@ -1225,7 +1232,9 @@ struct png_struct_def
    png_uint_32 flags;         /* flags indicating various things to libpng */
    png_uint_32 transformations; /* which transformations to perform */
 
+#ifdef USE_ZLIB
    z_stream zstream;          /* pointer to decompression structure (below) */
+#endif
    png_bytep zbuf;            /* buffer for zlib */
    png_size_t zbuf_size;      /* size of zbuf */
    int zlib_level;            /* holds zlib compression level */
@@ -1488,6 +1497,9 @@ struct png_struct_def
 /* New member added in libpng-1.2.30 */
   png_charp chunkdata;  /* buffer for reading chunk data */
 
+#ifdef USE_LZMA
+   lzma_stream lstream;
+#endif
 };
 
 
@@ -3075,11 +3087,13 @@ PNG_EXTERN void png_info_destroy PNGARG((png_structp png_ptr,
    png_infop info_ptr));
 
 #ifndef PNG_1_0_X
+#ifdef USE_ZLIB
 /* Function to allocate memory for zlib. */
 PNG_EXTERN voidpf png_zalloc PNGARG((voidpf png_ptr, uInt items, uInt size));
 
 /* Function to free memory for zlib */
 PNG_EXTERN void png_zfree PNGARG((voidpf png_ptr, voidpf ptr));
+#endif
 
 #ifdef PNG_SIZE_T
 /* Function to convert a sizeof an item to png_sizeof item */

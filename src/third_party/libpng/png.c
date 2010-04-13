@@ -141,6 +141,7 @@ png_check_sig(png_bytep sig, int num)
 #endif /* PNG_READ_SUPPORTED */
 
 #if defined(PNG_READ_SUPPORTED) || defined(PNG_WRITE_SUPPORTED)
+#ifdef USE_ZLIB
 /* Function to allocate memory for zlib and clear it to 0. */
 #ifdef PNG_1_0_X
 voidpf PNGAPI
@@ -195,6 +196,7 @@ png_zfree(voidpf png_ptr, voidpf ptr)
 {
    png_free((png_structp)png_ptr, (png_voidp)ptr);
 }
+#endif
 
 /* Reset the CRC variable to 32 bits of 1's.  Care must be taken
  * in case CRC is > 32 bits to leave the top bits 0.
@@ -202,7 +204,7 @@ png_zfree(voidpf png_ptr, voidpf ptr)
 void /* PRIVATE */
 png_reset_crc(png_structp png_ptr)
 {
-   png_ptr->crc = crc32(0, Z_NULL, 0);
+   png_ptr->crc = crc32(0, 0, 0);
 }
 
 /* Calculate the CRC over a section of data.  We can only pass as
@@ -228,7 +230,7 @@ png_calculate_crc(png_structp png_ptr, png_bytep ptr, png_size_t length)
    }
 
    if (need_crc)
-      png_ptr->crc = crc32(png_ptr->crc, ptr, (uInt)length);
+      png_ptr->crc = crc32(png_ptr->crc, ptr, length);
 }
 
 /* Allocate the memory for an info_struct for the application.  We don't
@@ -762,6 +764,7 @@ png_handle_as_unknown(png_structp png_ptr, png_bytep chunk_name)
 }
 #endif
 
+#ifdef USE_ZLIB
 /* This function, added to libpng-1.0.6g, is untested. */
 int PNGAPI
 png_reset_zstream(png_structp png_ptr)
@@ -770,6 +773,7 @@ png_reset_zstream(png_structp png_ptr)
       return Z_STREAM_ERROR;
    return (inflateReset(&png_ptr->zstream));
 }
+#endif
 #endif /* defined(PNG_READ_SUPPORTED) || defined(PNG_WRITE_SUPPORTED) */
 
 /* This function was added to libpng-1.0.7 */
