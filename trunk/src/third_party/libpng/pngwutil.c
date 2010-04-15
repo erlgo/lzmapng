@@ -521,9 +521,9 @@ png_write_compressed_data_out(png_structp png_ptr, compression_state *comp)
          (png_size_t)(png_ptr->zbuf_size - png_ptr->lstream.avail_out));
 
    /* Reset zlib for another zTXt/iTXt or image data */
-   lzma_ret ignore = lzma_easy_encoder(&png_ptr->lstream,
-                                       LZMA_PRESET_DEFAULT,
-                                       LZMA_CHECK_CRC32);
+   lzma_options_lzma options;
+   lzma_lzma_preset(&options, PNG_LZMA_PRESET);
+   lzma_ret ignore = lzma_alone_encoder(&png_ptr->lstream, &options);
    }
 #endif
 }
@@ -713,9 +713,9 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
 
 #ifdef USE_LZMA
    png_memset(&png_ptr->lstream, 0, sizeof(lzma_stream));
-   if (lzma_easy_encoder(&png_ptr->lstream,
-                         LZMA_PRESET_DEFAULT,
-                         LZMA_CHECK_CRC32) != LZMA_OK) {
+   lzma_options_lzma options;
+   lzma_lzma_preset(&options, PNG_LZMA_PRESET);
+   if (lzma_alone_encoder(&png_ptr->lstream, &options) != LZMA_OK) {
      png_error(png_ptr, "lzma failed to initialize compressor");
    }
    png_ptr->lstream.next_out = png_ptr->zbuf;
@@ -2136,9 +2136,9 @@ png_write_finish_row(png_structp png_ptr)
          png_ptr->lstream.avail_out);
    }
 
-   if (lzma_easy_encoder(&png_ptr->lstream,
-                         LZMA_PRESET_DEFAULT,
-                         LZMA_CHECK_CRC32) != LZMA_OK) {
+   lzma_options_lzma options;
+   lzma_lzma_preset(&options, PNG_LZMA_PRESET);
+   if (lzma_alone_encoder(&png_ptr->lstream, &options) != LZMA_OK) {
      png_error(png_ptr, "lzma failed to initialize compressor");
    }
    }

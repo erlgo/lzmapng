@@ -87,6 +87,7 @@ PngOptimizer::~PngOptimizer() {
 }
 
 bool PngOptimizer::CreateOptimizedPng(PngReaderInterface& reader,
+                                      CompressionType compression_type,
                                       const std::string& in,
                                       std::string* out) {
   // Configure error handlers.
@@ -107,7 +108,7 @@ bool PngOptimizer::CreateOptimizedPng(PngReaderInterface& reader,
   }
 
   // Copy the image data from the read structures to the write structures.
-  CopyReadToWrite();
+  CopyReadToWrite(compression_type);
 
   // Perform all possible lossless image reductions
   // (e.g. RGB->palette, etc).
@@ -128,10 +129,11 @@ bool PngOptimizer::CreateOptimizedPng(PngReaderInterface& reader,
 }
 
 bool PngOptimizer::OptimizePng(PngReaderInterface& reader,
+                               CompressionType compression_type,
                                const std::string& in,
                                std::string* out) {
   PngOptimizer o;
-  return o.CreateOptimizedPng(reader, in, out);
+  return o.CreateOptimizedPng(reader, compression_type, in, out);
 }
 
 PngReader::~PngReader() {
@@ -159,7 +161,7 @@ bool PngOptimizer::WritePng(std::string* buffer) {
   return true;
 }
 
-void PngOptimizer::CopyReadToWrite() {
+void PngOptimizer::CopyReadToWrite(CompressionType type) {
   png_uint_32 width, height;
   int bit_depth, color_type, interlace_type, compression_type, filter_type;
   png_get_IHDR(read_ptr_,
@@ -172,6 +174,15 @@ void PngOptimizer::CopyReadToWrite() {
                &compression_type,
                &filter_type);
 
+  switch (type) {
+    case ZLIB:
+      compression_type = PNG_COMPRESSION_TYPE_BASE;
+      break;
+    case LZMA:
+      compression_type = PNG_COMPRESSION_TYPE_LZMA;
+      break;
+  }
+
   png_set_IHDR(write_ptr_,
                write_info_ptr_,
                width,
@@ -179,7 +190,6 @@ void PngOptimizer::CopyReadToWrite() {
                bit_depth,
                color_type,
                interlace_type,
-               // can change to PNG_COMPRESSION_TYPE_LZMA
                compression_type,
                filter_type);
 

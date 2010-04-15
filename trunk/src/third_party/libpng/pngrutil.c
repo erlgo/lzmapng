@@ -395,10 +395,8 @@ png_decompress_chunk(png_structp png_ptr, int comp_type,
          if (ret != LZMA_OK && ret != LZMA_STREAM_END)
          {
             png_warning(png_ptr, msg);
-            lzma_stream_decoder(
-                &png_ptr->lstream,
-                lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-                0);
+            lzma_alone_decoder(&png_ptr->lstream,
+                               lzma_easy_decoder_memusage(PNG_LZMA_PRESET));
             png_ptr->lstream.avail_in = 0;
 
             if (text ==  NULL)
@@ -515,10 +513,8 @@ png_decompress_chunk(png_structp png_ptr, int comp_type,
          *(text + text_size) = 0x00;
       }
 
-      lzma_stream_decoder(
-          &png_ptr->lstream,
-          lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-          0);
+      lzma_alone_decoder(&png_ptr->lstream,
+                         lzma_easy_decoder_memusage(PNG_LZMA_PRESET));
       png_ptr->lstream.avail_in = 0;
 
       png_free(png_ptr, png_ptr->chunkdata);
@@ -3228,7 +3224,7 @@ png_read_finish_row(png_structp png_ptr)
             png_crc_read(png_ptr, png_ptr->zbuf, png_ptr->lstream.avail_in);
             png_ptr->idat_size -= png_ptr->lstream.avail_in;
          }
-         ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+         ret = lzma_code(&png_ptr->lstream, LZMA_RUN);
          if (ret == LZMA_STREAM_END)
          {
             if (!(png_ptr->lstream.avail_out) || png_ptr->lstream.avail_in ||
@@ -3256,10 +3252,8 @@ png_read_finish_row(png_structp png_ptr)
    if (png_ptr->idat_size || png_ptr->lstream.avail_in)
       png_warning(png_ptr, "Extra compression data");
 
-   lzma_ret rv = lzma_stream_decoder(
-       &png_ptr->lstream,
-       lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-       0);
+   lzma_ret ignore = lzma_alone_decoder(&png_ptr->lstream,
+                                        lzma_easy_decoder_memusage(PNG_LZMA_PRESET));
    }
 #endif
 

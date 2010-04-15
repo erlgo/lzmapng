@@ -159,10 +159,8 @@ png_create_read_struct_2(png_const_charp user_png_ver, png_voidp error_ptr,
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
 #endif
 #ifdef USE_LZMA
-   switch (lzma_stream_decoder(
-       &png_ptr->lstream,
-       lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-       0))
+   switch(lzma_alone_decoder(&png_ptr->lstream,
+                             lzma_easy_decoder_memusage(PNG_LZMA_PRESET)))
    {
      case LZMA_OK: /* Do nothing */ break;
      default: png_error(png_ptr, "lzma error");
@@ -330,10 +328,8 @@ png_read_init_3(png_structpp ptr_ptr, png_const_charp user_png_ver,
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
 #endif
 #ifdef USE_LZMA
-   switch (lzma_stream_decoder(
-       &png_ptr->lstream,
-       lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-       0))
+   switch(lzma_alone_decoder(&png_ptr->lstream,
+                             lzma_easy_decoder_memusage(PNG_LZMA_PRESET)))
    {
      case LZMA_OK: /* Do nothing */ break;
      default: png_error(png_ptr, "lzma error");
@@ -789,7 +785,7 @@ png_read_row(png_structp png_ptr, png_bytep row, png_bytep dsp_row)
             (png_size_t)png_ptr->lstream.avail_in);
          png_ptr->idat_size -= png_ptr->lstream.avail_in;
       }
-      ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+      ret = lzma_code(&png_ptr->lstream, LZMA_RUN);
       if (ret == LZMA_STREAM_END)
       {
          if (png_ptr->lstream.avail_out || png_ptr->lstream.avail_in ||

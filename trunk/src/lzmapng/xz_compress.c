@@ -24,15 +24,23 @@ int Compress(FILE* in, FILE* out, int compress) {
   char outbuf[kBufSize];
   lzma_stream lstream = LZMA_STREAM_INIT;
   lzma_ret rv;
+  lzma_options_lzma options;
+  lzma_lzma_preset(&options, LZMA_PRESET_DEFAULT);
   if (compress) {
+    /*
     rv = lzma_easy_encoder(&lstream,
                            LZMA_PRESET_DEFAULT,
                            LZMA_CHECK_CRC32);
+    */
+    rv = lzma_alone_encoder(&lstream, &options);
   } else {
+    /*
     rv = lzma_stream_decoder(
         &lstream,
         lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
         0);
+    */
+    rv = lzma_alone_decoder(&lstream, lzma_lzma_decoder_memusage(&options));
   }
   if (rv != LZMA_OK) {
     fprintf(stderr, "lzma_easy_encoder failed: %d\n", rv);
@@ -54,11 +62,6 @@ int Compress(FILE* in, FILE* out, int compress) {
       // Need to read additional data from the input file.
       lstream.next_in = inbuf;
       lstream.avail_in = fread(inbuf, sizeof(inbuf[0]), kBufSize, in);
-      if (lstream.avail_in <= 0) {
-        // We were unable to read additional data.
-        fprintf(stderr, "Failed to read input.\n");
-        break;
-      }
     }
 
     lzma_action action = LZMA_RUN;
