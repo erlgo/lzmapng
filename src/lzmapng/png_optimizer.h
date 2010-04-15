@@ -49,7 +49,13 @@ class PngReaderInterface {
 
 class PngOptimizer {
  public:
+  enum CompressionType {
+    ZLIB,
+    LZMA,
+  };
+
   static bool OptimizePng(PngReaderInterface& reader,
+                          CompressionType compression_type,
                           const std::string& in,
                           std::string* out);
 
@@ -61,11 +67,12 @@ class PngOptimizer {
   // all unnecessary chunks, and by choosing an optimal PNG encoding.
   // @return true on success, false on failure.
   bool CreateOptimizedPng(PngReaderInterface& reader,
+                          CompressionType compression_type,
                           const std::string& in,
                           std::string* out);
 
   bool WritePng(std::string* buffer);
-  void CopyReadToWrite();
+  void CopyReadToWrite(CompressionType compression_type);
 
   png_structp read_ptr_;
   png_infop read_info_ptr_;

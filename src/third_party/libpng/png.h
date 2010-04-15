@@ -1042,6 +1042,8 @@ typedef png_info FAR * FAR * png_infopp;
 #define PNG_COMPRESSION_TYPE_LZMA 1
 #define PNG_COMPRESSION_TYPE_DEFAULT PNG_COMPRESSION_TYPE_BASE
 
+#define PNG_LZMA_PRESET (LZMA_PRESET_DEFAULT)
+
 /* This is for filter type. PNG 1.0-1.2 only define the single type. */
 #define PNG_FILTER_TYPE_BASE      0 /* Single row per-byte filtering */
 #define PNG_INTRAPIXEL_DIFFERENCING 64 /* Used only in MNG datastreams */

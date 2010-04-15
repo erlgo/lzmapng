@@ -894,7 +894,7 @@ png_process_IDAT_data(png_structp png_ptr, png_bytep buffer,
    png_ptr->lstream.avail_in = buffer_length;
    for (;;)
    {
-      ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+      ret = lzma_code(&png_ptr->lstream, LZMA_RUN);
       if (ret != LZMA_OK)
       {
          if (ret == LZMA_STREAM_END)
@@ -1509,13 +1509,11 @@ png_push_read_zTXt(png_structp png_ptr, png_infop info_ptr)
 
       while (png_ptr->lstream.avail_in)
       {
-         ret = lzma_code(&png_ptr->lstream, LZMA_SYNC_FLUSH);
+         ret = lzma_code(&png_ptr->lstream, LZMA_RUN);
          if (ret != LZMA_OK && ret != LZMA_STREAM_END)
          {
-           lzma_stream_decoder(
-               &png_ptr->lstream,
-               lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-               0);
+            lzma_alone_decoder(&png_ptr->lstream,
+                               lzma_easy_decoder_memusage(PNG_LZMA_PRESET));
             png_ptr->lstream.avail_in = 0;
             png_ptr->current_text = NULL;
             png_free(png_ptr, key);
@@ -1573,10 +1571,8 @@ png_push_read_zTXt(png_structp png_ptr, png_infop info_ptr)
             break;
       }
 
-      lzma_stream_decoder(
-          &png_ptr->lstream,
-          lzma_easy_decoder_memusage(LZMA_PRESET_DEFAULT),
-          0);
+      lzma_alone_decoder(&png_ptr->lstream,
+                         lzma_easy_decoder_memusage(PNG_LZMA_PRESET));
       png_ptr->lstream.avail_in = 0;
 
       if (ret != LZMA_STREAM_END)

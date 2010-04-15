@@ -59,12 +59,23 @@ ImageType DetermineImageType(const std::string& filename) {
 }
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    fprintf(stderr, "Usage: optimize_image <input> <output>\n");
+  if (argc != 4) {
+    fprintf(stderr, "Usage: optimize_image <lzma|zlib> <input> <output>\n");
     return 1;
   }
 
-  std::string filename = argv[1];
+  std::string comptype = argv[1];
+  PngOptimizer::CompressionType compression_type;
+  if (comptype == "lzma") {
+    compression_type = PngOptimizer::LZMA;
+  } else if (comptype == "zlib") {
+    compression_type = PngOptimizer::ZLIB;
+  } else {
+    fprintf(stderr, "Could not parse compression type %s\n", comptype.c_str());
+    return 1;
+  }
+
+  std::string filename = argv[2];
   std::ifstream in(filename.c_str(), std::ios::in | std::ios::binary);
   if (!in) {
     fprintf(stderr, "Could not read input from %s\n", filename.c_str());
@@ -89,12 +100,14 @@ int main(int argc, char** argv) {
   if (type == PNG) {
     PngReader reader;
     success = PngOptimizer::OptimizePng(reader,
+                                        compression_type,
                                         file_contents,
                                         &compressed);
 #if defined(PAGESPEED_PNG_OPTIMIZER_GIF_READER)
   } else if (type == GIF) {
     GifReader reader;
     success = PngOptimizer::OptimizePng(reader,
+                                        compression_type,
                                         file_contents,
                                         &compressed);
 #endif
@@ -112,11 +125,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (compressed.size() >= file_contents.size()) {
-    compressed = file_contents;
-  }
-
-  std::ofstream out(argv[2], std::ios::out | std::ios::binary);
+  std::ofstream out(argv[3], std::ios::out | std::ios::binary);
   if (!out) {
     fprintf(stderr, "Error opening %s for write\n", argv[2]);
     return 1;
